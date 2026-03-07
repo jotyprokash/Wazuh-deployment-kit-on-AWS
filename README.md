@@ -4,7 +4,6 @@ A lightweight DevOps automation toolkit to deploy a **Dockerized Wazuh security 
 
 This project provides modular scripts to prepare a server, deploy Wazuh, configure Nginx reverse proxy, enable HTTPS with Let's Encrypt, and safely remove the deployment.
 
----
 
 ## Features
 
