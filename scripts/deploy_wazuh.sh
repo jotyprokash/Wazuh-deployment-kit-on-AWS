@@ -2,7 +2,7 @@
 
 #############################################
 # Wazuh Deployment Module
-# Dockerized Wazuh Single Node
+# Deploys Dockerized Wazuh Single Node
 # Optimized for AWS t4g.medium
 #############################################
 
@@ -15,6 +15,41 @@ WAZUH_DIR="$HOME/wazuh-docker"
 WAZUH_SINGLE_NODE="$WAZUH_DIR/single-node"
 
 #############################################
+# Detect Docker Compose command
+#############################################
+
+detect_compose_command() {
+  if command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+  elif docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+  else
+    error "Docker Compose not found"
+    exit 1
+  fi
+}
+
+#############################################
+# Ensure Docker permissions
+#############################################
+
+ensure_docker_permissions() {
+
+  step "Ensuring Docker permissions"
+
+  if ! groups | grep -q docker; then
+      sudo usermod -aG docker "$USER"
+      warn "User added to docker group"
+
+      info "Restarting script with docker group permissions..."
+      exec sg docker "$0"
+  fi
+
+  ok "Docker permissions OK"
+
+}
+
+#############################################
 # Main Deployment Function
 #############################################
 
@@ -24,6 +59,8 @@ run_wazuh_deployment() {
   step "Starting Wazuh deployment"
   print_line
 
+  detect_compose_command
+  ensure_docker_permissions
   validate_environment
   configure_kernel
   clone_wazuh_repo
@@ -49,7 +86,6 @@ validate_environment() {
 
   check_internet
   check_docker
-  check_compose
   check_disk_space
 
   ok "Environment validation completed"
@@ -65,12 +101,18 @@ configure_kernel() {
 
   sudo sysctl -w vm.max_map_count=262144 >/dev/null
 
-  if ! grep -q vm.max_map_count /etc/sysctl.conf; then
-      echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf >/dev/null
+  if grep -q '^vm.max_map_count=' /etc/sysctl.conf; then
+    sudo sed -i 's/^vm.max_map_count=.*/vm.max_map_count=262144/' /etc/sysctl.conf
+  else
+    echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf >/dev/null
   fi
 
-  ok "Kernel parameter configured"
-
+  if sysctl vm.max_map_count 2>/dev/null | grep -q "262144"; then
+    ok "Kernel parameter configured"
+  else
+    error "Failed to configure vm.max_map_count"
+    exit 1
+  fi
 }
 
 #############################################
@@ -81,16 +123,31 @@ clone_wazuh_repo() {
 
   step "Preparing Wazuh Docker repository"
 
-  if [ -d "$WAZUH_DIR" ]; then
-      warn "Wazuh repository already exists"
-      return
+  if [ -d "$WAZUH_DIR/.git" ]; then
+    warn "Wazuh repository already exists, updating to v4.14.3"
+    git -C "$WAZUH_DIR" fetch --tags origin || {
+      error "Failed to fetch Wazuh repository"
+      exit 1
+    }
+    git -C "$WAZUH_DIR" checkout v4.14.3 || {
+      error "Failed to checkout Wazuh v4.14.3"
+      exit 1
+    }
+  else
+    git clone https://github.com/wazuh/wazuh-docker.git -b v4.14.3 "$WAZUH_DIR" || {
+      error "Failed to clone Wazuh repository"
+      exit 1
+    }
   fi
 
-  git clone https://github.com/wazuh/wazuh-docker.git -b v4.14.3 "$WAZUH_DIR"
+  if [ ! -d "$WAZUH_SINGLE_NODE" ]; then
+    error "Single-node directory not found: $WAZUH_SINGLE_NODE"
+    exit 1
+  fi
 
-  ok "Wazuh repository cloned"
-
+  ok "Wazuh repository ready"
 }
+
 
 #############################################
 # Generate TLS Certificates
@@ -102,9 +159,27 @@ generate_wazuh_certs() {
 
   cd "$WAZUH_SINGLE_NODE" || exit 1
 
-  docker-compose -f generate-indexer-certs.yml run --rm generator
+  $COMPOSE_CMD -f generate-indexer-certs.yml run --rm generator
 
-  ok "Certificates generated"
+  CERT_DIR="$WAZUH_SINGLE_NODE/config/wazuh_indexer_ssl_certs"
+
+  # Fix permissions because generator runs as root
+  sudo chown -R $USER:$USER "$CERT_DIR" 2>/dev/null
+
+  if [ ! -d "$CERT_DIR" ]; then
+      error "Certificate directory not found: $CERT_DIR"
+      exit 1
+  fi
+
+  for cert in admin.pem root-ca.pem wazuh.dashboard.pem wazuh.indexer.pem wazuh.manager.pem
+  do
+      if [ ! -f "$CERT_DIR/$cert" ]; then
+          error "Missing certificate file: $cert"
+          exit 1
+      fi
+  done
+
+  ok "Certificates generated successfully"
 
 }
 
@@ -116,16 +191,16 @@ configure_memory() {
 
   step "Configuring OpenSearch memory"
 
-  ENV_FILE="$WAZUH_SINGLE_NODE/config/wazuh_indexer.env"
+  COMPOSE_FILE="$WAZUH_SINGLE_NODE/docker-compose.yml"
 
-  if [ ! -f "$ENV_FILE" ]; then
-      error "Indexer configuration file not found"
+  if [ ! -f "$COMPOSE_FILE" ]; then
+      error "docker-compose.yml not found"
       exit 1
   fi
 
-  sed -i 's/OPENSEARCH_JAVA_OPTS=.*/OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g/' "$ENV_FILE"
+  sed -i 's/-Xms2g -Xmx2g/-Xms1g -Xmx1g/g' "$COMPOSE_FILE" 2>/dev/null
 
-  ok "Memory tuned for t4g.medium (4GB RAM)"
+  ok "OpenSearch heap adjusted for t4g.medium (1GB)"
 
 }
 
@@ -139,10 +214,12 @@ start_wazuh_containers() {
 
   cd "$WAZUH_SINGLE_NODE" || exit 1
 
-  docker-compose up -d
+  eval "$COMPOSE_CMD up -d" || {
+    error "Failed to start Wazuh containers"
+    exit 1
+  }
 
   ok "Docker containers started"
-
 }
 
 #############################################
@@ -153,12 +230,15 @@ wait_for_containers() {
 
   step "Waiting for Wazuh services to initialize"
 
-  sleep 20
+  sleep 30
 
-  if docker ps | grep -q wazuh; then
+  RUNNING=$(docker ps --format "{{.Names}}" | grep -c "wazuh")
+
+  if [ "$RUNNING" -ge 3 ]; then
       ok "Wazuh containers are running"
   else
       error "Wazuh containers failed to start"
+      docker ps
       exit 1
   fi
 
@@ -172,13 +252,12 @@ verify_indexer() {
 
   step "Checking Wazuh indexer logs"
 
-  if docker logs single-node_wazuh.indexer_1 | grep -i "OutOfMemory" >/dev/null; then
-      error "Indexer memory issue detected"
-      exit 1
+  if docker logs single-node_wazuh.indexer_1 2>&1 | grep -qi "OutOfMemory"; then
+    error "Indexer memory issue detected"
+    exit 1
   fi
 
   ok "Indexer running without memory errors"
-
 }
 
 #############################################
@@ -188,9 +267,7 @@ verify_indexer() {
 show_access_info() {
 
   print_line
-
   info "Wazuh dashboard is available"
-
   echo
   echo "Access URL:"
   echo "https://<EC2_PUBLIC_IP>"
@@ -199,5 +276,4 @@ show_access_info() {
   echo "Username: admin"
   echo "Password: SecretPassword"
   echo
-
 }
