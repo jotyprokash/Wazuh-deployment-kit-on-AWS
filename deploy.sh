@@ -12,6 +12,7 @@ source "$BASE_DIR/lib/logger.sh"
 source "$BASE_DIR/scripts/server_readiness.sh"
 source "$BASE_DIR/scripts/deploy_wazuh.sh"
 source "$BASE_DIR/scripts/nginx_setup.sh"
+source "$BASE_DIR/scripts/ssl_setup.sh"
 source "$BASE_DIR/scripts/remove_wazuh.sh"
 
 init_log
@@ -20,18 +21,19 @@ while true; do
   clear
 
   print_line
-  echo "           WAZUH DEPLOYMENT TOOL"
+  echo "           WAZUH DEPLOYMENT"
   echo "      Minimal • Secure • Reusable • AWS"
   print_line
 
   echo "1) Validate Server Readiness"
   echo "2) Deploy Wazuh XDR Platform"
   echo "3) Configure Domain Reverse Proxy (Nginx)"
-  echo "4) Remove Wazuh Deployment"
-  echo "5) Exit Deployment Tool"
+  echo "4) Enable HTTPS (Let's Encrypt SSL)"
+  echo "5) Remove Wazuh Deployment"
+  echo "6) Exit Deployment Tool"
   echo ""
 
-  read -r -p "Select an operation [1-5]: " choice
+  read -r -p "Select an operation [1-6]: " choice
 
   case "$choice" in
 
@@ -57,20 +59,27 @@ while true; do
       ;;
 
     4)
+      step "Enabling HTTPS using Let's Encrypt"
+      log_msg "INFO" "User selected SSL Setup"
+      run_ssl_setup
+      pause_screen
+      ;;
+
+    5)
       step "Removing Wazuh Deployment"
       log_msg "INFO" "User selected Wazuh Removal"
       run_wazuh_removal
       pause_screen
       ;;
 
-    5)
+    6)
       info "Exiting deployment tool."
       log_msg "INFO" "User exited the script"
       exit 0
       ;;
 
     *)
-      warn "Invalid selection. Please choose a valid option between 1 and 5."
+      warn "Invalid selection. Please choose a valid option between 1 and 6."
       pause_screen
       ;;
 
