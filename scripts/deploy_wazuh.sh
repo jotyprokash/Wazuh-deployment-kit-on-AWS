@@ -64,6 +64,7 @@ run_wazuh_deployment() {
   validate_environment
   configure_kernel
   clone_wazuh_repo
+  patch_dashboard_port
   generate_wazuh_certs
   configure_memory
   start_wazuh_containers
@@ -146,6 +147,29 @@ clone_wazuh_repo() {
   fi
 
   ok "Wazuh repository ready"
+}
+
+#############################################
+# Patch Dashboard Port (prepare for Nginx)
+#############################################
+
+patch_dashboard_port() {
+
+  step "Patching dashboard port for reverse proxy setup"
+
+  COMPOSE_FILE="$WAZUH_SINGLE_NODE/docker-compose.yml"
+
+  if [ ! -f "$COMPOSE_FILE" ]; then
+      error "docker-compose.yml not found"
+      exit 1
+  fi
+
+  # Replace any 443:5601 exposure with localhost binding
+  sed -i 's/443:5601/127.0.0.1:5601:5601/g' "$COMPOSE_FILE"
+  sed -i 's/"443:5601"/"127.0.0.1:5601:5601"/g' "$COMPOSE_FILE"
+
+  ok "Dashboard port patched to localhost:5601"
+
 }
 
 
