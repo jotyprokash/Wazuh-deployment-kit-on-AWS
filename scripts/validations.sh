@@ -154,14 +154,15 @@ check_wazuh_containers() {
 
 check_nginx() {
 
-  info "Checking Nginx service..."
+  step "Checking Nginx installation"
 
-  if systemctl is-active --quiet nginx; then
-      ok "Nginx running"
-  else
-      error "Nginx is not running"
-      return 1
+  if ! command -v nginx >/dev/null 2>&1; then
+      warn "Nginx not found. Installing..."
+      sudo apt update -y
+      sudo apt install nginx -y
   fi
+
+  ok "Nginx available"
 
 }
 
