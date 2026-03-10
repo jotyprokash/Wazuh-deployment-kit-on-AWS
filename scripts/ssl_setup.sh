@@ -21,10 +21,11 @@ run_ssl_setup() {
   print_line
 
   check_nginx
-
+  install_certbot
   ask_domain
   confirm_dns
   install_certificate
+  enable_auto_renew
   verify_ssl
 
   print_line
@@ -34,12 +35,33 @@ run_ssl_setup() {
 }
 
 #############################################
+# Install Certbot if missing
+#############################################
+
+install_certbot() {
+
+  step "Checking Certbot installation"
+
+  if ! command -v certbot >/dev/null 2>&1; then
+      warn "Certbot not found. Installing..."
+
+      sudo apt update -y
+      sudo apt install certbot python3-certbot-nginx -y
+
+      ok "Certbot installed successfully"
+  else
+      ok "Certbot already installed"
+  fi
+
+}
+
+#############################################
 # Ask Domain
 #############################################
 
 ask_domain() {
 
-  read -rp "Enter domain configured for Wazuh (example: wazuh.example.com): " DOMAIN
+  read -rp "Enter domain configured for Wazuh dashboard (example: wazuh.example.com): " DOMAIN
 
   if [ -z "$DOMAIN" ]; then
       error "Domain cannot be empty"
@@ -59,7 +81,7 @@ confirm_dns() {
   step "Checking DNS configuration"
 
   if check_dns "$DOMAIN"; then
-      ok "DNS appears to be configured"
+      ok "DNS resolution detected"
   else
       warn "DNS may not be fully propagated yet"
   fi
@@ -85,14 +107,34 @@ install_certificate() {
 
   step "Requesting SSL certificate from Let's Encrypt"
 
-  sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect -m admin@"$DOMAIN" || {
+  sudo certbot --nginx \
+      -d "$DOMAIN" \
+      --non-interactive \
+      --agree-tos \
+      --redirect \
+      --email admin@"$DOMAIN" || {
 
       error "Certbot failed to obtain certificate"
       exit 1
 
   }
 
-  ok "SSL certificate installed"
+  ok "SSL certificate installed successfully"
+
+}
+
+#############################################
+# Enable Auto Renewal
+#############################################
+
+enable_auto_renew() {
+
+  step "Configuring automatic SSL renewal"
+
+  sudo systemctl enable certbot.timer >/dev/null 2>&1
+  sudo systemctl start certbot.timer >/dev/null 2>&1
+
+  ok "Automatic renewal enabled"
 
 }
 
@@ -111,7 +153,7 @@ verify_ssl() {
   fi
 
   print_line
-  info "Wazuh Dashboard is now available at:"
+  info "Wazuh Dashboard is now available securely at:"
   echo
   echo "https://$DOMAIN"
   echo
