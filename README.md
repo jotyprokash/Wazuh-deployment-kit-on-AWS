@@ -18,8 +18,8 @@ This project provides modular scripts to prepare a server, deploy Wazuh, configu
 
 Recommended minimum resources:
 
-* **2 vCPU**
-* **4 GB RAM**
+* **4 vCPU**
+* **2 GB RAM**
 * **30 GB Storage**
 * **Ubuntu 20.04 / 22.04**
 
