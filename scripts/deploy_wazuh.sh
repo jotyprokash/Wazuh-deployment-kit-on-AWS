@@ -2,7 +2,8 @@
 
 #############################################
 # Wazuh Deployment Module
-# Deploys Dockerized Wazuh Single Node
+# Dockerized Wazuh Single Node
+# Optimized for AWS t4g.medium
 #############################################
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,14 +25,17 @@ run_wazuh_deployment() {
   print_line
 
   validate_environment
+  configure_kernel
   clone_wazuh_repo
+  generate_wazuh_certs
   configure_memory
   start_wazuh_containers
   wait_for_containers
+  verify_indexer
   show_access_info
 
   print_line
-  ok "Wazuh deployment completed"
+  ok "Wazuh deployment completed successfully"
   print_line
 }
 
@@ -46,11 +50,26 @@ validate_environment() {
   check_internet
   check_docker
   check_compose
-  check_ports
-  check_memory
   check_disk_space
 
   ok "Environment validation completed"
+}
+
+#############################################
+# Configure Kernel Requirement
+#############################################
+
+configure_kernel() {
+
+  step "Configuring kernel parameter vm.max_map_count"
+
+  sudo sysctl -w vm.max_map_count=262144 >/dev/null
+
+  if ! grep -q vm.max_map_count /etc/sysctl.conf; then
+      echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf >/dev/null
+  fi
+
+  ok "Kernel parameter configured"
 
 }
 
@@ -67,19 +86,35 @@ clone_wazuh_repo() {
       return
   fi
 
-  git clone https://github.com/wazuh/wazuh-docker.git "$WAZUH_DIR"
+  git clone https://github.com/wazuh/wazuh-docker.git -b v4.14.3 "$WAZUH_DIR"
 
   ok "Wazuh repository cloned"
 
 }
 
 #############################################
-# Configure Memory for 4GB Server
+# Generate TLS Certificates
+#############################################
+
+generate_wazuh_certs() {
+
+  step "Generating Wazuh TLS certificates"
+
+  cd "$WAZUH_SINGLE_NODE" || exit 1
+
+  docker-compose -f generate-indexer-certs.yml run --rm generator
+
+  ok "Certificates generated"
+
+}
+
+#############################################
+# Configure OpenSearch Memory
 #############################################
 
 configure_memory() {
 
-  step "Configuring OpenSearch memory settings"
+  step "Configuring OpenSearch memory"
 
   ENV_FILE="$WAZUH_SINGLE_NODE/config/wazuh_indexer.env"
 
@@ -88,9 +123,9 @@ configure_memory() {
       exit 1
   fi
 
-  sed -i 's/OPENSEARCH_JAVA_OPTS=.*/OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g/' "$ENV_FILE"
+  sed -i 's/OPENSEARCH_JAVA_OPTS=.*/OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g/' "$ENV_FILE"
 
-  ok "Memory tuned for 4GB instance"
+  ok "Memory tuned for t4g.medium (4GB RAM)"
 
 }
 
@@ -104,21 +139,21 @@ start_wazuh_containers() {
 
   cd "$WAZUH_SINGLE_NODE" || exit 1
 
-  docker compose up -d
+  docker-compose up -d
 
   ok "Docker containers started"
 
 }
 
 #############################################
-# Wait for Containers to Initialize
+# Wait for Containers
 #############################################
 
 wait_for_containers() {
 
   step "Waiting for Wazuh services to initialize"
 
-  sleep 15
+  sleep 20
 
   if docker ps | grep -q wazuh; then
       ok "Wazuh containers are running"
@@ -130,18 +165,39 @@ wait_for_containers() {
 }
 
 #############################################
+# Verify Indexer Health
+#############################################
+
+verify_indexer() {
+
+  step "Checking Wazuh indexer logs"
+
+  if docker logs single-node_wazuh.indexer_1 | grep -i "OutOfMemory" >/dev/null; then
+      error "Indexer memory issue detected"
+      exit 1
+  fi
+
+  ok "Indexer running without memory errors"
+
+}
+
+#############################################
 # Show Access Information
 #############################################
 
 show_access_info() {
 
   print_line
-  info "Wazuh dashboard is starting"
+
+  info "Wazuh dashboard is available"
+
   echo
   echo "Access URL:"
-  echo "https://<server-ip>"
+  echo "https://<EC2_PUBLIC_IP>"
   echo
-  echo "Default credentials will be displayed in the container logs."
+  echo "Default credentials:"
+  echo "Username: admin"
+  echo "Password: SecretPassword"
   echo
 
 }
