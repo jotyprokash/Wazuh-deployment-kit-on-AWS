@@ -29,7 +29,7 @@ Recommended minimum resources:
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/wazuh-deployment-kit-on-aws.git
+git clone https://github.com/jotyprokash/Wazuh-deployment-kit-on-AWS.git
 cd wazuh-deployment-kit-on-aws
 ```
 
