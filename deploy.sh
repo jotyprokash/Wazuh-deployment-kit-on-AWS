@@ -11,7 +11,7 @@ source "$BASE_DIR/lib/logger.sh"
 # Load modules
 source "$BASE_DIR/scripts/server_readiness.sh"
 source "$BASE_DIR/scripts/deploy_wazuh.sh"
-source "$BASE_DIR/scripts/nginx_setup.sh"
+source "$BASE_DIR/scripts/nginx_reverse-proxy_setup.sh"
 source "$BASE_DIR/scripts/ssl_setup.sh"
 source "$BASE_DIR/scripts/remove_wazuh.sh"
 
