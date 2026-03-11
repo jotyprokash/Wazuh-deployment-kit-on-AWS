@@ -18,8 +18,8 @@ This project provides modular scripts to prepare a server, deploy Wazuh, configu
 
 Recommended minimum resources:
 
-* **4 vCPU**
-* **2 GB RAM**
+* **2 vCPU**
+* **4 GB RAM**
 * **30 GB Storage**
 * **Ubuntu 20.04 / 22.04**
 
@@ -30,7 +30,7 @@ Clone the repository:
 
 ```bash
 git clone https://github.com/jotyprokash/Wazuh-deployment-kit-on-AWS.git
-cd wazuh-deployment-kit-on-aws
+cd Wazuh-deployment-kit-on-aws
 ```
 
 Make scripts executable:
@@ -53,10 +53,12 @@ Run the deployment toolkit:
 Menu options:
 
 ```
-1) Server Readiness
-2) Deploy Wazuh
-3) Remove Wazuh
-4) Exit
+1) Validate Server Readiness
+2) Deploy Wazuh XDR Platform
+3) Configure Domain Reverse Proxy (Nginx)
+4) Enable HTTPS (Let's Encrypt SSL)
+5) Remove Wazuh Deployment
+6) Exit Deployment Tool
 ```
 
 
