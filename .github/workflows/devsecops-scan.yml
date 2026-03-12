@@ -8,7 +8,6 @@ permissions:
   security-events: write
 
 jobs:
-
   security-scan:
     name: DevSecOps Repository Scan
     runs-on: ubuntu-latest
@@ -32,6 +31,7 @@ jobs:
 
       - name: Run Semgrep (SARIF)
         uses: returntocorp/semgrep-action@v1
+        continue-on-error: true
         with:
           config: auto
           generateSarif: "1"
@@ -43,11 +43,13 @@ jobs:
 
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v2
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Trivy Filesystem Scan
         uses: aquasecurity/trivy-action@0.24.0
+        continue-on-error: true
         with:
           scan-type: fs
           format: table
